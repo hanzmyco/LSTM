@@ -72,6 +72,28 @@ def test_batch_generator(batch_generator):
     print (phrase)
     print (p2)
 
+def test_visualization(concate_input,concate_predict):
+
+    input_mats=np.split(concate_input,num_unrollings,0)
+    predict_mats=np.split(concate_predict,num_unrollings,0)
+    output_sents=[]
+    for b in xrange(0, len(input_mats[0])):
+        phrase_in=''
+        phrase_out=''
+        for i in xrange(0, num_unrollings):
+            for j in xrange(0,vocabulary_size):
+                if input_mats[i][b][j]==1.0:
+                    phrase_in+=id2char(j)
+            max_index=0
+            for j in xrange(0,vocabulary_size):
+                if predict_mats[i][b][j]>=predict_mats[i][b][max_index]:
+                    max_index=j
+            phrase_out+=id2char(max_index)
+        if phrase_in.strip(' ')[::-1] !=phrase_out.strip(' '):
+            output_sents.append((phrase_in.strip(' ')[:-1],phrase_out))
+    print (output_sents)
+
+
 
 def characters(probabilities):
     """Turn a 1-hot encoding or a probability distribution over the possible
@@ -177,7 +199,7 @@ test_batch_generator(batch_g)
 
 
 train_batches = BatchGenerator(train_text, batch_size, num_unrollings)
-valid_batches = BatchGenerator(valid_text, 1, 1)
+valid_batches = BatchGenerator(valid_text, batch_size, num_unrollings)
 
 
 with graph.as_default():
@@ -223,9 +245,6 @@ with graph.as_default():
     saved_output_decoder = tf.Variable(tf.zeros([batch_size, num_nodes]), trainable=False)
     saved_state_decoder = tf.Variable(tf.zeros([batch_size, num_nodes]), trainable=False)
 
-    # Classifier weights and biases.
-    w = tf.Variable(tf.truncated_normal([num_nodes, vocabulary_size], -0.1, 0.1))
-    b = tf.Variable(tf.zeros([vocabulary_size]))
 
     #gate_x= tf.Variable(tf.truncated_normal([vocabulary_size,num_nodes*4],-0.1,0.1))
     #gate_m=tf.Variable(tf.truncated_normal([num_nodes,4*num_nodes],-0.1,0.1))
@@ -239,6 +258,11 @@ with graph.as_default():
     sm_decoder = tf.concat([im_decoder, fm_decoder, cm_decoder, om_decoder], 1)
     sb_decoder = tf.concat([ib_decoder, fb_decoder, cb_decoder, ob_decoder], 1)
 
+    # Classifier weights and biases.
+    w = tf.Variable(tf.truncated_normal([num_nodes, vocabulary_size], -0.1, 0.1))
+    b = tf.Variable(tf.zeros([vocabulary_size]))
+
+    y = tf.Variable(tf.zeros([batch_size, vocabulary_size]), trainable=False)
 
     def lstm_cell_encoder(i,o,state):
         '''
@@ -283,26 +307,45 @@ with graph.as_default():
     # Input data.
 
 
-    train_data = list()
+    train_data_encoder = list()
+    train_labels = list()
     for _ in range(num_unrollings + 1):
-        train_data.append(
+        train_data_encoder.append(
             tf.placeholder(tf.float32, shape=[batch_size, vocabulary_size]))
-    train_inputs = train_data[:num_unrollings]
-    train_labels = train_data[1:]  # labels are inputs shifted by one time step.
+    for _ in range(num_unrollings):
+        train_labels.append(tf.placeholder(tf.float32, shape=[batch_size, vocabulary_size]))
 
-    # Unrolled LSTM loop.
+    #train_inputs = train_data[:num_unrollings]
+
+      # labels are inputs shifted by one time step.
+
+    # Unrolled LSTM loop. encoder
     outputs_encoder = list()
     output_encoder = saved_output_encoder
     state_encoder = saved_state_encoder
-    for i in train_inputs:
+    for i in train_data_encoder:
         output_encoder, state_encoder = lstm_cell_encoder(i, output_encoder, state_encoder)
-        outputs_encoder.append(output_encoder)
+        outputs_encoder.append(output_encoder) # store a list of output
+    last_hidden_encoder=outputs_encoder[-1] # last tag of outputs_encoder
+    last_cm_encoder=state_encoder
+
+
+    # Unrolled LSTM loop. decoder
+    outputs_decoder = list()
+    output_decoder = last_hidden_encoder  # pass in the last
+    state_decoder = last_cm_encoder
+    for i in xrange(0,num_unrollings):
+        y = tf.nn.xw_plus_b(tf.concat(output_decoder, 0), w, b)
+        output_decoder, state_decoder = lstm_cell_encoder(y, output_decoder, state_decoder)
+        outputs_decoder.append(output_decoder)  # store a list of output
+
+
 
     # State saving across unrollings.
-    with tf.control_dependencies([saved_output.assign(output),
-                                  saved_state.assign(state)]):
+    with tf.control_dependencies([saved_output_encoder.assign(output_encoder),
+                                  saved_state_encoder.assign(state_encoder),saved_output_decoder.assign(output_decoder),saved_state_decoder.assign(state_decoder)]):
         # Classifier.
-        logits = tf.nn.xw_plus_b(tf.concat(outputs, 0), w, b)
+        logits = tf.nn.xw_plus_b(tf.concat(outputs_decoder, 0), w, b)
         loss = tf.reduce_mean(
             tf.nn.softmax_cross_entropy_with_logits(
                 labels=tf.concat(train_labels, 0), logits=logits))
@@ -320,18 +363,9 @@ with graph.as_default():
     # Predictions.
     train_prediction = tf.nn.softmax(logits)
 
-    # Sampling and validation eval: batch 1, no unrolling.
-    sample_input = tf.placeholder(tf.float32, shape=[1, vocabulary_size])
-    saved_sample_output = tf.Variable(tf.zeros([1, num_nodes]))
-    saved_sample_state = tf.Variable(tf.zeros([1, num_nodes]))
-    reset_sample_state = tf.group(
-        saved_sample_output.assign(tf.zeros([1, num_nodes])),
-        saved_sample_state.assign(tf.zeros([1, num_nodes])))
-    sample_output, sample_state = lstm_cell1(
-        sample_input, saved_sample_output, saved_sample_state)
-    with tf.control_dependencies([saved_sample_output.assign(sample_output),
-                                  saved_sample_state.assign(sample_state)]):
-        sample_prediction = tf.nn.softmax(tf.nn.xw_plus_b(sample_output, w, b))
+
+    # Sampling and validation eval: batchsize unrolling.
+
 
 num_steps = 7001
 summary_frequency = 100
@@ -344,7 +378,9 @@ with tf.Session(graph=graph) as session:
     batches = train_batches.next()
     feed_dict = dict()
     for i in range(num_unrollings + 1):
-      feed_dict[train_data[i]] = batches[i]
+      feed_dict[train_data_encoder[i]] = batches[0][i]
+      if i!=0:
+        feed_dict[train_labels[i-1]]=batches[1][i-1]
     _, l, predictions, lr = session.run(
       [optimizer, loss, train_prediction, learning_rate], feed_dict=feed_dict)
     mean_loss += l
@@ -355,22 +391,30 @@ with tf.Session(graph=graph) as session:
       print(
         'Average loss at step %d: %f learning rate: %f' % (step, mean_loss, lr))
       mean_loss = 0
-      labels = np.concatenate(list(batches)[1:])
+      labels = np.concatenate(list(batches[1]))
       print('Minibatch perplexity: %.2f' % float(
         np.exp(logprob(predictions, labels))))
+
+      test_visualization(labels,predictions)
+
+
+
+      '''
       if step % (summary_frequency * 10) == 0:
         # Generate some samples.
         print('=' * 80)
         for _ in range(5):
           feed = sample(random_distribution())
           sentence = characters(feed)[0]
-          reset_sample_state.run()
+
+          #reset_sample_state.run()
           for _ in range(79):
             prediction = sample_prediction.eval({sample_input: feed})
             feed = sample(prediction)
             sentence += characters(feed)[0]
           print(sentence)
         print('=' * 80)
+
       # Measure validation set perplexity.
       reset_sample_state.run()
       valid_logprob = 0
@@ -380,3 +424,5 @@ with tf.Session(graph=graph) as session:
         valid_logprob = valid_logprob + logprob(predictions, b[1])
       print('Validation set perplexity: %.2f' % float(np.exp(
         valid_logprob / valid_size)))
+        '''
+
