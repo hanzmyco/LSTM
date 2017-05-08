@@ -8,9 +8,10 @@ import tensorflow as tf
 import zipfile
 from six.moves import range
 from six.moves.urllib.request import urlretrieve
-
+from batch_generator import *
+from data_util import *
 url = 'http://mattmahoney.net/dc/'
-
+'''
 class BatchGenerator(object):
     def __init__(self, text, batch_size, num_unrollings):
         self._text = text
@@ -28,7 +29,7 @@ class BatchGenerator(object):
                 if len(self._text[self.begin_index+b]) >self.next_position:
                     batch_encoder[b, char2id(self._text[self.begin_index+b][self.next_position])] = 1.0
                 #else: #
-                 #   batch_encoder[b,0]=1.0  # padding with ' ', 看看这个词够不够长
+                    #batch_encoder[b,0]=1.0  # padding with ' ', 看看这个词够不够长
 
         return batch_encoder
 
@@ -41,9 +42,9 @@ class BatchGenerator(object):
         for step in range(self._num_unrollings):
             batches_encoder.append(self._next_batch())
             self.next_position+=1
-        batches_encoder.append(np.zeros(shape=(self._batch_size, vocabulary_size), dtype=np.float))
-        for b in range(self._batch_size):  # last node in encoder
-            batches_encoder[self._num_unrollings][b,0]=1.0
+        #batches_encoder.append(np.zeros(shape=(self._batch_size, vocabulary_size), dtype=np.float))
+        #for b in range(self._batch_size):  # last node in encoder
+            #batches_encoder[self._num_unrollings][b,0]=1.0
         batches_decoder=[]
         # mirror image of batch encoder,  self becomes fles
         for step in xrange(self._num_unrollings):
@@ -54,6 +55,7 @@ class BatchGenerator(object):
         self.begin_index += batch_size
 
         return batches_encoder, batches_decoder
+
 
 def test_batch_generator(batch_generator):
     batch_generator.next()
@@ -113,9 +115,9 @@ def test_visualization(concate_input,concate_predict):
 
         output_sents.append((phrase_in[::-1],phrase_out))
     print (output_sents)
+'''
 
-
-
+'''
 def characters(probabilities):
     """Turn a 1-hot encoding or a probability distribution over the possible
     characters back into its (most likely) character representation."""
@@ -152,7 +154,7 @@ def read_data(filename):
         name = f.namelist()[0]
         data = tf.compat.as_str(f.read(name))
     return data
-
+'''
 text = read_data(filename).strip(' ').split(' ')
 
 valid_size = 1000
@@ -163,28 +165,25 @@ train_size = len(train_text)
 #ave_len=sum([len(ite) for ite in text])/len(text)
 #print (ave_len)
 
-vocabulary_size = len(string.ascii_lowercase)+1  # [a-z] + ' ' + end tag， use end tag to represent the end
+vocabulary_size = len(string.ascii_lowercase) # [a-z] + ' ' + end tag， use end tag to represent the end
 first_letter = ord(string.ascii_lowercase[0])
 
-
+'''
 def char2id(char):
     if char in string.ascii_lowercase:
-        return ord(char) - first_letter + 1
-    elif char == 'EOW':
-        return 0
+        return ord(char) - first_letter
     else:
-        print('Unexpected character: %s' % char)
-        return 1
+        return -1
 
 
 def id2char(dictid):
-    if dictid > 0:
-        return chr(dictid + first_letter - 1)
-    elif dictid==0:
-        return ' EOW'
+    if dictid >= 0:
+        return chr(dictid + first_letter)
+    else:
+        return '  '
     #else:
      #   return 'EOW'
-
+'''
 
 #print(char2id('a'), char2id('z'), char2id(' '), char2id('ï'))
 #print(id2char(1), id2char(26), id2char(0))
@@ -211,16 +210,16 @@ def random_distribution():
     b=np.random.uniform(0.0,1.0,size=[1,vocabulary_size])
     return b/np.sum(b,1)[:,None]
 
-num_nodes=64
+num_nodes=100
 graph = tf.Graph()
 batch_size = 64
-num_unrollings=5
-batch_g=BatchGenerator(text,batch_size,num_unrollings)
-test_batch_generator(batch_g)
+num_unrollings=3
+batch_g=BatchGenerator(text,batch_size,num_unrollings,vocabulary_size,first_letter)
+test_batch_generator(batch_g,vocabulary_size,first_letter)
 
 
-train_batches = BatchGenerator(train_text, batch_size, num_unrollings)
-valid_batches = BatchGenerator(valid_text, batch_size, num_unrollings)
+train_batches = BatchGenerator(train_text, batch_size, num_unrollings,vocabulary_size,first_letter)
+valid_batches = BatchGenerator(valid_text, batch_size, num_unrollings,vocabulary_size,first_letter)
 
 
 with graph.as_default():
@@ -250,18 +249,30 @@ with graph.as_default():
     ix_decoder = tf.Variable(tf.truncated_normal([vocabulary_size, num_nodes], -0.1, 0.1))
     im_decoder = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], -0.1, 0.1))
     ib_decoder = tf.Variable(tf.zeros([1, num_nodes]))
+    ic_decoder=tf.Variable(tf.truncated_normal([num_nodes, num_nodes], -0.1, 0.1))
+
+
     # Forget gate: input, previous output, and bias.
     fx_decoder = tf.Variable(tf.truncated_normal([vocabulary_size, num_nodes], -0.1, 0.1))
     fm_decoder = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], -0.1, 0.1))
     fb_decoder = tf.Variable(tf.zeros([1, num_nodes]))
+    fc_decoder=tf.Variable(tf.truncated_normal([num_nodes, num_nodes], -0.1, 0.1))
+
     # Memory cell: input, state and bias.
     cx_decoder = tf.Variable(tf.truncated_normal([vocabulary_size, num_nodes], -0.1, 0.1))
     cm_decoder = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], -0.1, 0.1))
     cb_decoder = tf.Variable(tf.zeros([1, num_nodes]))
+    cc_decoder=tf.Variable(tf.truncated_normal([num_nodes, num_nodes], -0.1, 0.1))
+
     # Output gate: input, previous output, and bias.
     ox_decoder = tf.Variable(tf.truncated_normal([vocabulary_size, num_nodes], -0.1, 0.1))
     om_decoder = tf.Variable(tf.truncated_normal([num_nodes, num_nodes], -0.1, 0.1))
     ob_decoder = tf.Variable(tf.zeros([1, num_nodes]))
+    oc_decoder=tf.Variable(tf.truncated_normal([num_nodes, num_nodes], -0.1, 0.1))
+
+
+
+
     # Variables saving state across unrollings.
     saved_output_decoder = tf.Variable(tf.zeros([batch_size, num_nodes]), trainable=False)
     saved_state_decoder = tf.Variable(tf.zeros([batch_size, num_nodes]), trainable=False)
@@ -275,9 +286,11 @@ with graph.as_default():
     sm_encoder = tf.concat([im_encoder, fm_encoder, cm_encoder, om_encoder],1)
     sb_encoder = tf.concat([ib_encoder, fb_encoder, cb_encoder, ob_encoder],1)
 
+
     sx_decoder = tf.concat([ix_decoder, fx_decoder, cx_decoder, ox_decoder], 1)
     sm_decoder = tf.concat([im_decoder, fm_decoder, cm_decoder, om_decoder], 1)
     sb_decoder = tf.concat([ib_decoder, fb_decoder, cb_decoder, ob_decoder], 1)
+    sc_decoder = tf.concat([ic_decoder,fc_decoder,cc_decoder,oc_decoder],1)
 
     # Classifier weights and biases.
     w = tf.Variable(tf.truncated_normal([num_nodes, vocabulary_size], -0.1, 0.1))
@@ -304,7 +317,7 @@ with graph.as_default():
         state = forget_gate * state + input_gate * tf.tanh(update) # final memory cell
         return output_gate * tf.tanh(state), state   # hidden state,  final memory cell
 
-    def lstm_cell_decoder(i,o,state):
+    def lstm_cell_decoder(i,o,state, attention):
         '''
         gatex=tf.matmul(i,gate_x)
         gatem=tf.matmul(o,gate_m)
@@ -315,7 +328,7 @@ with graph.as_default():
         output_gate=gatex[:,3*num_nodes:4*num_nodes]+gatem[:,3*num_nodes:4*num_nodes]+gate_b[0,3*num_nodes:4*num_nodes]
         return output_gate*tf.tanh(state),state
         '''
-        smatmul = tf.matmul(i, sx_decoder) + tf.matmul(o, sm_decoder) + sb_decoder
+        smatmul = tf.matmul(i, sx_decoder) + tf.matmul(o, sm_decoder) + tf.matmul(attention,sc_decoder) +sb_decoder
         smatmul_input, smatmul_forget, update, smatmul_output = tf.split(smatmul,4,1)
         input_gate = tf.sigmoid(smatmul_input)
         forget_gate = tf.sigmoid(smatmul_forget)
@@ -330,7 +343,7 @@ with graph.as_default():
 
     train_data_encoder = list()
     train_labels = list()
-    for _ in range(num_unrollings + 1):
+    for _ in range(num_unrollings):
         train_data_encoder.append(
             tf.placeholder(tf.float32, shape=[batch_size, vocabulary_size]))
     for _ in range(num_unrollings):
@@ -347,17 +360,17 @@ with graph.as_default():
     for i in train_data_encoder:
         output_encoder, state_encoder = lstm_cell_encoder(i, output_encoder, state_encoder)
         outputs_encoder.append(output_encoder) # store a list of output
-    last_hidden_encoder=outputs_encoder[-1] # last tag of outputs_encoder
+    last_hidden_encoder=output_encoder # last tag of outputs_encoder
     last_cm_encoder=state_encoder
 
 
     # Unrolled LSTM loop. decoder
     outputs_decoder = list()
-    output_decoder = last_hidden_encoder  # pass in the last
-    state_decoder = last_cm_encoder
+    output_decoder = saved_output_decoder  # pass in the last
+    state_decoder = saved_state_decoder
     for i in xrange(0,num_unrollings):
         y = tf.nn.xw_plus_b(tf.concat(output_decoder, 0), w, b)
-        output_decoder, state_decoder = lstm_cell_encoder(y, output_decoder, state_decoder)
+        output_decoder, state_decoder = lstm_cell_decoder(y, output_decoder, state_decoder,outputs_encoder[num_unrollings-i-1])
         outputs_decoder.append(output_decoder)  # store a list of output
 
 
@@ -388,36 +401,36 @@ with graph.as_default():
     # Sampling and validation eval: batchsize unrolling.
 
 
-num_steps = 7001
+num_steps = 7001  #how many batches to use
 summary_frequency = 100
-
+epoch=10
 with tf.Session(graph=graph) as session:
   tf.global_variables_initializer().run()
   print('Initialized')
   mean_loss = 0
-  for step in range(num_steps):
-    batches = train_batches.next()
-    feed_dict = dict()
-    for i in range(num_unrollings + 1):
-      feed_dict[train_data_encoder[i]] = batches[0][i]
-      if i!=0:
-        feed_dict[train_labels[i-1]]=batches[1][i-1]
-    _, l, predictions, lr = session.run(
-      [optimizer, loss, train_prediction, learning_rate], feed_dict=feed_dict)
-    mean_loss += l
-    if step % summary_frequency == 0:
-      if step > 0:
-        mean_loss = mean_loss / summary_frequency
-      # The mean loss is an estimate of the loss over the last few batches.
-      print(
-        'Average loss at step %d: %f learning rate: %f' % (step, mean_loss, lr))
-      mean_loss = 0
-      labels = np.concatenate(list(batches[1]))
-      print('Minibatch perplexity: %.2f' % float(
-        np.exp(logprob(predictions, labels))))
+  for time in xrange(epoch):
+      for step in range(num_steps):
+        batches = train_batches.next()
+        feed_dict = dict()
+        for i in range(num_unrollings):
+          feed_dict[train_data_encoder[i]] = batches[0][i]
+          feed_dict[train_labels[i]]=batches[1][i]
+        _, l, predictions, lr = session.run(
+          [optimizer, loss, train_prediction, learning_rate], feed_dict=feed_dict)
+        mean_loss += l
+        if step % summary_frequency == 0:
+          if step > 0:
+            mean_loss = mean_loss / summary_frequency
+          # The mean loss is an estimate of the loss over the last few batches.
+          print(
+            'Average loss at step %d: %f learning rate: %f' % (step, mean_loss, lr))
+          mean_loss = 0
+          labels = np.concatenate(list(batches[1]))
+          print('Minibatch perplexity: %.2f' % float(
+            np.exp(logprob(predictions, labels))))
 
-      test_visualization(labels,predictions)
-      #test_visualization1(batches)
+          test_visualization(labels,predictions,vocabulary_size,first_letter,num_unrollings)
+          #test_visualization1(batches)
 
 
 
@@ -448,4 +461,3 @@ with tf.Session(graph=graph) as session:
       print('Validation set perplexity: %.2f' % float(np.exp(
         valid_logprob / valid_size)))
         '''
-
