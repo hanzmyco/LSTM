@@ -5,156 +5,16 @@ import numpy as np
 import random
 import string
 import tensorflow as tf
-import zipfile
-from six.moves import range
-from six.moves.urllib.request import urlretrieve
+#import zipfile
+#from six.moves import range
+#from six.moves.urllib.request import urlretrieve
 from batch_generator import *
 from data_util import *
+from virsualization import * 
+
 url = 'http://mattmahoney.net/dc/'
-'''
-class BatchGenerator(object):
-    def __init__(self, text, batch_size, num_unrollings):
-        self._text = text
-        self._text_size = len(text)
-        self._batch_size = batch_size
-        self._num_unrollings = num_unrollings
-        self.next_position=0
-        self.begin_index=0
-
-    def _next_batch(self):
-        """Generate a single batch from the current cursor position in the data."""
-        batch_encoder = np.zeros(shape=(self._batch_size, vocabulary_size), dtype=np.float)
-        for b in range(self._batch_size):
-            if self._text_size > self.begin_index+b:  # meet enough word
-                if len(self._text[self.begin_index+b]) >self.next_position:
-                    batch_encoder[b, char2id(self._text[self.begin_index+b][self.next_position])] = 1.0
-                #else: #
-                    #batch_encoder[b,0]=1.0  # padding with ' ', 看看这个词够不够长
-
-        return batch_encoder
-
-    def next(self):
-        """Generate the next array of batches from the data. The array consists of
-        the last batch of the previous array, followed by num_unrollings new ones.
-        """
-        batches_encoder = []
-        self.next_position=0
-        for step in range(self._num_unrollings):
-            batches_encoder.append(self._next_batch())
-            self.next_position+=1
-        #batches_encoder.append(np.zeros(shape=(self._batch_size, vocabulary_size), dtype=np.float))
-        #for b in range(self._batch_size):  # last node in encoder
-            #batches_encoder[self._num_unrollings][b,0]=1.0
-        batches_decoder=[]
-        # mirror image of batch encoder,  self becomes fles
-        for step in xrange(self._num_unrollings):
-            batches_decoder.append(np.zeros(shape=(self._batch_size, vocabulary_size), dtype=np.float))
-            for b in range(self._batch_size):
-                for i in xrange(0,vocabulary_size):
-                    batches_decoder[step][b][i]=batches_encoder[self._num_unrollings-step-1][b][i]
-        self.begin_index += batch_size
-
-        return batches_encoder, batches_decoder
 
 
-def test_batch_generator(batch_generator):
-    batch_generator.next()
-    data=batch_generator.next()
-    phrase = ''
-    p2=''
-    for i in xrange(0,batch_generator._num_unrollings):
-            for j in xrange(0,vocabulary_size):
-                if data[0][i][0][j]==1.0:
-                    phrase+=id2char(j)
-                    break
-            for j in xrange(0,vocabulary_size):
-                if data[1][i][0][j]==1.0:
-                    p2+=id2char(j)
-    print (batch_generator._text[64])
-    print (phrase)
-    print (p2)
-
-def test_visualization1(batch):
-    output_sents=[]
-    for b in xrange(0, len(batch[0])):
-        phrase_in=''
-        phrase_out=''
-        for i in xrange(0, num_unrollings):
-            #phrase_in+=characters(input_mats[i][b])
-            for j in xrange(0,vocabulary_size):
-                if batch[0][i][b][j]==1.0:
-                    phrase_in+=id2char(j)
-            for j in xrange(0,vocabulary_size):
-                if batch[1][i][b][j]==1.0:
-                    phrase_out+=id2char(j)
-
-        if phrase_in[::-1] !=phrase_out:
-            output_sents.append((phrase_in[::-1],phrase_out))
-    print (output_sents)
-
-def test_visualization(concate_input,concate_predict):
-
-    input_mats=np.split(concate_input,num_unrollings,0)
-    predict_mats=np.split(concate_predict,num_unrollings,0)
-    output_sents=[]
-    for b in xrange(0, len(input_mats[0])):
-        phrase_in=''
-        phrase_out=''
-        for i in xrange(0, num_unrollings):
-            #phrase_in+=characters(input_mats[i][b])
-            for j in xrange(0,vocabulary_size):
-                if input_mats[i][b][j]==1.0:
-                    phrase_in+=id2char(j)
-            max_index=0
-            for j in xrange(0,vocabulary_size):
-                if predict_mats[i][b][j]>=predict_mats[i][b][max_index]:
-                    max_index=j
-            if predict_mats[i][b][max_index]!=0:
-                phrase_out+=id2char(max_index)
-            #phrase_out+=characters(predict_mats[i][b])
-
-        output_sents.append((phrase_in[::-1],phrase_out))
-    print (output_sents)
-'''
-
-'''
-def characters(probabilities):
-    """Turn a 1-hot encoding or a probability distribution over the possible
-    characters back into its (most likely) character representation."""
-    return [id2char(c) for c in np.argmax(probabilities, 1)]
-
-
-def batches2string(batches):
-    """Convert a sequence of batches back into their (most likely) string
-    representation."""
-    s = [''] * batches[0].shape[0]
-    for b in batches:
-        s = [''.join(x) for x in zip(s, characters(b))]
-    return s
-
-
-def maybe_download(filename, expected_bytes):
-  """Download a file if not present, and make sure it's the right size."""
-  if not os.path.exists(filename):
-    filename, _ = urlretrieve(url + filename, filename)
-  statinfo = os.stat(filename)
-  if statinfo.st_size == expected_bytes:
-    print('Found and verified %s' % filename)
-  else:
-    print(statinfo.st_size)
-    raise Exception(
-      'Failed to verify ' + filename + '. Can you get to it with a browser?')
-  return filename
-
-filename = maybe_download('text8.zip', 31344016)
-
-
-def read_data(filename):
-    with zipfile.ZipFile(filename) as f:
-        name = f.namelist()[0]
-        data = tf.compat.as_str(f.read(name))
-    return data
-'''
 text = read_data(filename).strip(' ').split(' ')
 
 valid_size = 1000
@@ -168,26 +28,10 @@ train_size = len(train_text)
 vocabulary_size = len(string.ascii_lowercase) # [a-z] + ' ' + end tag， use end tag to represent the end
 first_letter = ord(string.ascii_lowercase[0])
 
-'''
-def char2id(char):
-    if char in string.ascii_lowercase:
-        return ord(char) - first_letter
-    else:
-        return -1
-
-
-def id2char(dictid):
-    if dictid >= 0:
-        return chr(dictid + first_letter)
-    else:
-        return '  '
-    #else:
-     #   return 'EOW'
-'''
-
 #print(char2id('a'), char2id('z'), char2id(' '), char2id('ï'))
 #print(id2char(1), id2char(26), id2char(0))
 
+'''
 def logprob(predictions,labels):
     predictions[predictions<1e-10]=1e-10
     return np.sum(np.multiply(labels,-np.log(predictions)))/labels.shape[0]
@@ -209,7 +53,7 @@ def sample(prediction):
 def random_distribution():
     b=np.random.uniform(0.0,1.0,size=[1,vocabulary_size])
     return b/np.sum(b,1)[:,None]
-
+'''
 num_nodes=100
 graph = tf.Graph()
 batch_size = 64
